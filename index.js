@@ -2,7 +2,7 @@ const path = require('path')
 const fs = require('fs')
 const qs = require('querystring')
 
-const paramPattern = /:([^/]+)/
+const paramPattern = /[:%]([^/]+)/
 // takes routes and decorates them with a 'match' method that will return { params, query } if a path matches
 function addMatch (route) {
   let routePath = route.path
@@ -16,7 +16,7 @@ function addMatch (route) {
   // if a route ends with `index`, allow matching that route without matching the `index` part
   if (path.basename(routePath) === 'index') {
     route.isIndex = true
-    routePath = routePath.replace(/\/index$/, '/?(:?index)?')
+    routePath = routePath.replace(/\/index$/, '/?([:%]?index)?')
   }
   // create a regex with our path
   let pattern = new RegExp(`^${routePath}(\\?(.*)|$)`, 'i')
@@ -32,6 +32,10 @@ function addMatch (route) {
       return { params, query }
     }
   }
+  // add supported methods
+  route.methods = typeof route === 'function' ? 
+    ['ANY'] : 
+    Object.keys(route).filter(m => ['GET', 'POST', 'PUT', 'DELETE'].indexOf(m.toUpperCase()) > -1);
   return route
 }
 
@@ -57,7 +61,8 @@ module.exports = function router (routesDir, config) {
       if (!route.path) {
         route.path = '/' + path.relative(routesDir, routeFile).replace(extPattern, '')
         //Fix issue with windows paths
-        route.path = route.path.replace(/\\/, '/')
+        // Replace ALL occurrences of \\
+        route.path = route.path.replace(/\\/g, '/')
       }
       return route
     })
@@ -68,11 +73,23 @@ module.exports = function router (routesDir, config) {
       if (!route.priority && route.isIndex) route.priority = -1
       return route
     })
+    // param routes should not override specific routes (/users/login should take precedence over /users/:id)
+    .sort((a, b) => {
+      const aa = a.path.replace(/[:%]/g, '~');
+      const bb = b.path.replace(/[:%]/g, '~')
+      if (aa < bb) {
+        return -1;
+      } else if (aa > bb) {
+        return 1;
+      } else {
+        return 0;
+      }
+    })
     // if a route exposes a `priority` property, sort the route on it.
     .sort((a, b) => val(a.priority) < val(b.priority) ? 1 : -1)
 
   // generated match method - call with a req object to get a route.
-  return function match (req) {
+  const matchFn = function match (req) {
     let routeFn = r => r[req.method] || (typeof r === 'function' && r)
     let found = routes.find(r => {
       let matched = r.match(req.url)
@@ -84,4 +101,6 @@ module.exports = function router (routesDir, config) {
     })
     if (found) return routeFn(found)
   }
+  matchFn._routes = routes;
+  return matchFn;
 }

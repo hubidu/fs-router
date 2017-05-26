@@ -1,6 +1,0 @@
-module.exports.GET = () => 'GET'
-module.exports.PUT = () => 'PUT'
-module.exports.POST = () => 'POST'
-module.exports.PATCH = () => 'PATCH'
-module.exports.DELETE = () => 'DELETE'
-module.exports.OPTIONS = () => 'OPTIONS'
